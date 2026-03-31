@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>现代化 Dockerfile 校验器 UI (极致质感版)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkbg: '#0A0A0A',
+                        darkcard: '#141414',
+                        darkcardhover: '#1A1A1A'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(156, 163, 175, 0.4); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(107, 114, 128, 0.8); }
+        .smooth-scroll { scroll-behavior: smooth; }
+        
+        /* 核心过渡动画 */
+        body { transition: background-color 0.3s ease, color 0.3s ease; }
+        .transition-theme { transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease; }
+        
+        /* ✨ 核心动效：高级卡片悬浮/呼吸感 */
+        .hover-float {
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .hover-float:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.08), 0 4px 8px -4px rgba(0, 0, 0, 0.04);
+        }
+        .dark .hover-float:hover {
+            box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-darkbg text-gray-900 dark:text-gray-100 h-screen w-screen overflow-hidden flex flex-col font-sans antialiased">
+
+    <header class="h-14 bg-white dark:bg-darkcard border-b border-gray-200 dark:border-white/10 flex items-center justify-between px-6 shrink-0 relative z-10 transition-theme">
+        <div class="flex items-center gap-3">
+            <div class="w-7 h-7 bg-blue-600 text-white rounded-md flex items-center justify-center font-bold shadow-sm text-sm">D</div>
+            <h1 class="font-semibold text-[15px] text-gray-900 dark:text-white tracking-tight">Dockerfile Validator</h1>
+        </div>
+        <div class="flex items-center gap-3">
+            <button class="h-8 px-4 text-[13px] font-medium rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:bg-transparent dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5 transition-all">
+                新建案例
+            </button>
+            <button class="h-8 px-4 text-[13px] font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 shadow-sm transition-all">
+                全量测试
+            </button>
+            <div class="w-px h-4 bg-gray-200 dark:bg-white/10 mx-1"></div>
+            
+            <button onclick="toggleModal('exampleModal')" class="h-8 px-3 text-[13px] font-medium rounded-md text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5 transition-all">
+                示例库
+            </button>
+            <button onclick="toggleModal('apiModal')" class="h-8 px-3 text-[13px] font-medium rounded-md text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5 transition-all">
+                API 设置
+            </button>
+            
+            <button onclick="toggleTheme()" class="w-8 h-8 flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5 transition-all">
+                <svg id="themeIconSun" class="w-4 h-4 hidden dark:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-2.25l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>
+                <svg id="themeIconMoon" class="w-4 h-4 block dark:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 flex overflow-hidden">
+        
+        <section class="w-[45%] flex flex-col relative shrink-0 border-r border-gray-200 dark:border-white/10 bg-white dark:bg-darkbg transition-theme z-10">
+            <div class="px-6 py-3 border-b border-gray-100 dark:border-white/5 flex justify-between items-center text-[13px] bg-gray-50/50 dark:bg-transparent transition-theme">
+                <span class="font-mono text-gray-500 dark:text-gray-400">workspace / Dockerfile</span>
+                <span class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><div class="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div> 监听中</span>
+            </div>
+            <div class="flex-1 p-6 font-mono text-[13px] leading-relaxed overflow-y-auto text-gray-800 dark:text-gray-300">
+                <div class="flex gap-4 group">
+                    <span class="text-gray-400 dark:text-gray-600 select-none">1</span>
+                    <div class="flex-1 relative">
+                        <span class="text-blue-600 dark:text-blue-400">FROM</span> ubuntu:latest
+                        <div class="absolute inset-y-0 -left-2 -right-4 bg-red-500/10 border-l-[3px] border-red-500 pointer-events-none opacity-40 group-hover:opacity-100 transition-opacity"></div>
+                    </div>
+                </div>
+                <div class="flex gap-4">
+                    <span class="text-gray-400 dark:text-gray-600 select-none">2</span>
+                    <div class="flex-1"><span class="text-blue-600 dark:text-blue-400">RUN</span> apt-get update</div>
+                </div>
+            </div>
+        </section>
+
+        <aside class="flex-1 flex flex-col shrink-0 bg-gray-50/30 dark:bg-darkcard transition-theme z-0 relative">
+            
+            <div class="px-6 py-5 border-b border-gray-100 dark:border-white/5 bg-white dark:bg-darkcard transition-theme flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center text-red-600 dark:text-red-400">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </div>
+                    <div>
+                        <h2 class="text-[17px] font-semibold text-gray-900 dark:text-white tracking-tight">校验未通过</h2>
+                        <p class="text-[13px] text-gray-500 dark:text-gray-400 mt-0.5">发现 1 个错误，1 个警告，请修复后构建</p>
+                    </div>
+                </div>
+                <button class="px-4 py-2 text-[13px] font-medium rounded-md bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200 shadow-sm transition-all">
+                    一键应用修复
+                </button>
+            </div>
+
+            <div class="px-6 py-4 flex gap-3 shrink-0">
+                <button class="flex-1 py-2 px-3 rounded-lg text-[13px] font-medium flex items-center justify-between transition-all border
+                    bg-red-50/50 border-red-100/50 text-red-700 hover:bg-red-50 
+                    dark:bg-red-500/5 dark:border-red-500/10 dark:text-red-400 dark:hover:bg-red-500/10">
+                    <span class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-red-500"></div> 错误</span>
+                    <span class="text-xs font-mono">1</span>
+                </button>
+                <button class="flex-1 py-2 px-3 rounded-lg text-[13px] font-medium flex items-center justify-between transition-all border
+                    bg-yellow-50/50 border-yellow-100/50 text-yellow-700 hover:bg-yellow-50 
+                    dark:bg-yellow-500/5 dark:border-yellow-500/10 dark:text-yellow-400 dark:hover:bg-yellow-500/10">
+                    <span class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-yellow-400"></div> 警告</span>
+                    <span class="text-xs font-mono">1</span>
+                </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto px-6 pb-6 space-y-4">
+                <div class="hover-float p-5 bg-white dark:bg-darkcardhover border border-gray-100 dark:border-white/5 rounded-xl transition-all relative overflow-hidden group">
+                    <div class="absolute left-0 top-0 bottom-0 w-[3px] bg-red-500"></div>
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-[11px] font-semibold px-2 py-0.5 rounded text-red-600 bg-red-50 dark:bg-red-500/10 dark:text-red-400">行 1</span>
+                            <span class="text-[11px] font-mono text-gray-400 dark:text-gray-500">F004</span>
+                        </div>
+                    </div>
+                    <h3 class="text-[14px] font-semibold text-gray-900 dark:text-gray-100 mb-1.5">禁止使用 latest 标签</h3>
+                    <p class="text-[13px] text-gray-500 dark:text-gray-400 leading-relaxed mb-4">生产环境中必须指定具体的版本号以确保构建的确定性。</p>
+                    
+                    <div class="bg-gray-50 dark:bg-[#111] rounded-lg p-3 border border-gray-100 dark:border-white/5 flex items-center justify-between">
+                        <div class="text-[13px] text-gray-700 dark:text-gray-300 font-mono">FROM ubuntu:22.04</div>
+                        <button class="px-3 py-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-xs font-medium rounded-md transition-colors">
+                            应用
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <aside class="w-[340px] flex flex-col shrink-0 border-l border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-darkbg transition-theme">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/5 transition-theme">
+                <h2 class="text-[14px] font-medium text-gray-900 dark:text-white">历史记录</h2>
+                <button class="text-[12px] text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">清空</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 space-y-3">
+                <div class="hover-float p-4 bg-white dark:bg-darkcard rounded-xl shadow-sm ring-1 ring-blue-500 dark:ring-blue-500/50 border border-transparent cursor-pointer transition-all">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-600 dark:text-red-400">
+                            <div class="w-1.5 h-1.5 rounded-full bg-red-500"></div> 校验失败
+                        </span>
+                        <span class="text-[11px] text-gray-400 font-mono">14:23</span>
+                    </div>
+                    <div class="bg-gray-50 dark:bg-[#050505] border border-gray-100 dark:border-white/5 rounded-md p-2.5 mb-3 text-[11px] font-mono text-gray-500 dark:text-gray-400 line-clamp-2">
+                        FROM ubuntu:latest<br>RUN apt-get update
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <div id="exampleModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-gray-900/30 dark:bg-black/70 backdrop-blur-md opacity-0 transition-opacity duration-300">
+        <div class="w-[860px] h-[680px] bg-white dark:bg-darkcard border border-transparent dark:border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden transform scale-95 transition-transform duration-300" id="exampleModalContent">
+            
+            <div class="flex items-center justify-between px-6 py-5 border-b border-gray-100 dark:border-white/5 shrink-0">
+                <h2 class="text-[16px] font-semibold text-gray-900 dark:text-white">官方示例库</h2>
+                <button onclick="toggleModal('exampleModal')" class="text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-6 bg-gray-50/50 dark:bg-darkbg">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="hover-float p-5 rounded-xl bg-white dark:bg-darkcardhover border border-gray-200 dark:border-white/5 cursor-pointer group" onmouseenter="showPreview('python')" onmouseleave="hidePreview()">
+                        <div class="flex items-start justify-between mb-1.5">
+                            <h3 class="text-[14px] font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Python AI 基础环境</h3>
+                            <span class="text-[10px] px-2 py-0.5 rounded text-green-600 bg-green-50 dark:bg-green-500/10 dark:text-green-400 font-medium">最佳实践</span>
+                        </div>
+                        <p class="text-[12px] text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">包含国内镜像源配置、轻量化安装策略及非 root 权限运行机制。</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="h-[260px] shrink-0 border-t border-gray-200 dark:border-white/10 bg-gray-900 dark:bg-[#050505] flex flex-col relative overflow-hidden">
+                <div class="h-10 px-5 bg-gray-950 dark:bg-black border-b border-gray-800 dark:border-white/5 flex items-center justify-between shrink-0">
+                    <span class="text-[12px] font-mono text-gray-500 dark:text-gray-600" id="previewTitle">等待预览...</span>
+                </div>
+                <div class="flex-1 p-6 overflow-y-auto smooth-scroll relative">
+                    <div id="previewEmpty" class="absolute inset-0 flex items-center justify-center text-gray-500 dark:text-gray-600 pointer-events-none">
+                        <p class="text-[13px]">悬停卡片查看代码详情</p>
+                    </div>
+                    <pre id="previewCode" class="hidden text-[13px] font-mono text-gray-300 leading-relaxed whitespace-pre-wrap"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="apiModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-gray-900/30 dark:bg-black/70 backdrop-blur-md opacity-0 transition-opacity duration-300">
+        <div class="w-[480px] bg-white dark:bg-darkcard border border-transparent dark:border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden transform scale-95 transition-transform duration-300" id="apiModalContent">
+            
+            <div class="flex items-center justify-between px-6 py-5 border-b border-gray-100 dark:border-white/5">
+                <h2 class="text-[16px] font-semibold text-gray-900 dark:text-white">API 配置</h2>
+                <button onclick="toggleModal('apiModal')" class="text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-5">
+                <div>
+                    <label class="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">AI 提供商</label>
+                    <div class="flex gap-1 p-1 bg-gray-100 dark:bg-darkbg rounded-lg border border-transparent dark:border-white/5">
+                        <button class="flex-1 py-1.5 text-[13px] font-medium bg-white dark:bg-darkcardhover text-gray-900 dark:text-white rounded-md shadow-sm border border-gray-200 dark:border-white/5">自定义</button>
+                        <button class="flex-1 py-1.5 text-[13px] font-medium text-gray-500 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 rounded-md transition-colors">Claude</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">模型选择</label>
+                    <select class="w-full h-10 px-3 rounded-lg bg-gray-50 dark:bg-darkbg border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all appearance-none cursor-pointer">
+                        <option value="qwen-max">通义千问 (qwen-max)</option>
+                        <option value="qwen-turbo">通义千问 (qwen-turbo)</option>
+                        <option value="deepseek-chat">DeepSeek (deepseek-chat)</option>
+                        <option value="custom">输入自定义模型名称...</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-2">API Key</label>
+                    <input type="password" placeholder="sk-..." class="w-full h-10 px-4 rounded-lg bg-gray-50 dark:bg-darkbg border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-mono">
+                </div>
+
+                <div class="mt-2 flex items-start gap-2 text-gray-500 dark:text-gray-400">
+                    <svg class="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>
+                    <p class="text-[12px] leading-relaxed">
+                        <span class="font-medium text-gray-700 dark:text-gray-300">本地环境安全：</span>您的 API Key 及代码仅在浏览器本地进行处理。刷新或关闭页面后，所有配置数据将自动销毁，绝不会上传至任何服务器。
+                    </p>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 border-t border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-darkcard flex justify-end gap-3">
+                <button onclick="toggleModal('apiModal')" class="h-9 px-4 text-[13px] font-medium rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:bg-transparent dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5 transition-all">取消</button>
+                <button class="h-9 px-4 text-[13px] font-medium rounded-md bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200 shadow-sm transition-all">保存配置</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleTheme() {
+            const html = document.documentElement;
+            html.classList.toggle('dark');
+        }
+
+        function toggleModal(modalId) {
+            const modal = document.getElementById(modalId);
+            const contentId = modalId === 'exampleModal' ? 'exampleModalContent' : 'apiModalContent';
+            const content = document.getElementById(contentId);
+            
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                setTimeout(() => { 
+                    modal.classList.remove('opacity-0'); 
+                    content.classList.remove('scale-95'); 
+                }, 10);
+            } else {
+                modal.classList.add('opacity-0'); 
+                content.classList.add('scale-95');
+                setTimeout(() => { 
+                    modal.classList.add('hidden'); 
+                    modal.classList.remove('flex');
+                }, 300);
+            }
+        }
+
+        const codeData = {
+            python: "FROM python:3.10-slim\nWORKDIR /app\nRUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\nCOPY . .\nCMD [\"python\", \"main.py\"]"
+        };
+        const titles = { python: "Python AI 基础环境" };
+
+        const emptyView = document.getElementById('previewEmpty');
+        const codeView = document.getElementById('previewCode');
+        const titleView = document.getElementById('previewTitle');
+
+        function showPreview(type) {
+            emptyView.classList.add('hidden'); 
+            codeView.classList.remove('hidden');
+            codeView.textContent = codeData[type]; 
+            titleView.textContent = `预览: ${titles[type]}`;
+            titleView.classList.add('text-blue-400');
+            titleView.classList.remove('text-gray-500', 'dark:text-gray-600');
+        }
+        function hidePreview() {
+            codeView.classList.add('hidden'); 
+            emptyView.classList.remove('hidden');
+            titleView.textContent = "等待预览...";
+            titleView.classList.remove('text-blue-400');
+            titleView.classList.add('text-gray-500', 'dark:text-gray-600');
+        }
+    </script>
+</body>
+</html>

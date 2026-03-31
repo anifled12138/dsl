@@ -1,0 +1,508 @@
+这些结果里，**大部分是对的**，但也有几处还需要改。
+我按你贴的几个案例逐条判断。
+
+---
+
+# 1. `COPY --from=builder /app/main /main`
+
+```dockerfile
+FROM ubuntu:22.04
+COPY --from=builder /app/main /main
+CMD ["/main"]
+```
+
+输出：
+
+> COPY --from 引用的阶段 "builder" 不存在
+
+## 判断
+
+**这是正确的。**
+
+因为这个 Dockerfile 里没有：
+
+```dockerfile
+FROM ... AS builder
+```
+
+所以 `builder` 不是已定义的 stage alias（阶段别名），报错合理。
+而且这里应该是 **error（错误）**，不是轻提示。
+
+---
+
+# 2. `ENTRYPOINT ["node"] + CMD ["server.js"]`
+
+```dockerfile
+FROM node:20
+ENTRYPOINT ["node"]
+CMD ["server.js"]
+```
+
+输出：
+
+> 未检测到 USER 指令，容器可能以 root 用户运行
+
+## 判断
+
+**这也是正确的。**
+
+因为这里确实没有 `USER` 指令。
+Docker 默认通常以 root 用户运行，所以：
+
+* 未检测到 USER
+* 容器可能以 root 用户运行
+
+这个提示是合理的。
+
+## 需要注意
+
+这个案例里**不应该报 CMD/ENTRYPOINT 组合错误**，因为：
+
+```dockerfile
+ENTRYPOINT ["node"]
+CMD ["server.js"]
+```
+
+这是一个**合法且推荐**的组合：
+
+* `ENTRYPOINT ["node"]`
+* `CMD ["server.js"]`
+
+两者组合后相当于执行：
+
+```bash
+node server.js
+```
+
+所以如果当前只有 USER 风险提示，那是对的。
+
+---
+
+# 3. EXPOSE 这个案例
+
+你贴了 Dockerfile，但没有贴完整输出。我先说**正确结果应该是什么**：
+
+```dockerfile
+FROM nginx:1.25
+EXPOSE 80
+EXPOSE 80/tcp
+EXPOSE 99999
+EXPOSE abc
+EXPOSE 53/udp
+EXPOSE 80/abc
+```
+
+## 正确判断应该是：
+
+### `EXPOSE 80`
+
+合法
+
+### `EXPOSE 80/tcp`
+
+语法合法，但和前面的 `EXPOSE 80` **存在重复 / 等价暴露**
+因为不写协议时，通常默认就是 tcp。
+所以这里更合理的是：
+
+* 给一个 **warning（警告）**
+* 说端口 80 已经暴露，`80` 和 `80/tcp` 语义重复
+
+### `EXPOSE 99999`
+
+**错误**
+
+* 端口超出 1–65535 范围
+
+### `EXPOSE abc`
+
+**错误**
+
+* 不是合法端口
+
+### `EXPOSE 53/udp`
+
+合法
+
+### `EXPOSE 80/abc`
+
+**错误**
+
+* 协议非法，只能是 tcp/udp
+
+## 这里要特别注意一点
+
+如果你们同时报了：
+
+* EX001 端口合法性错误
+* EX003 协议语法错误
+
+而且两条 message（提示信息）内容几乎一样，那就是**重复报错**，要去重。
+
+也就是说对于：
+
+```dockerfile
+EXPOSE 80/abc
+```
+
+更合理的做法是：
+
+* 只报 **协议非法**
+* 不要再额外用“端口合法性”重复报一遍同一个事实
+
+---
+
+# 4. ENV/ARG 覆盖这个 JSON 输出
+
+```dockerfile
+FROM ubuntu:22.04
+ENV FOO=1
+ENV FOO=2
+ARG SECRET
+ENV SECRET=value
+```
+
+输出了：
+
+* `E002` ENV 重复定义
+* `E001` ENV 敏感信息检测
+* `E003` ARG 与 ENV 同名覆盖
+
+## 判断
+
+这组结果我认为**基本正确，而且质量不错**。
+
+### `E002`
+
+```dockerfile
+ENV FOO=1
+ENV FOO=2
+```
+
+报重复定义，**正确**。
+
+---
+
+### `E001`
+
+```dockerfile
+ENV SECRET=value
+```
+
+报 secrets（敏感信息）检测，**正确**。
+
+因为变量名就叫 `SECRET`，这是高风险关键词。
+即使值只是 `value`，也合理提示：
+
+* 不应固化到镜像中
+
+---
+
+### `E003`
+
+```dockerfile
+ARG SECRET
+ENV SECRET=value
+```
+
+报同名覆盖，**正确**。
+
+这条属于：
+
+* best practice（最佳实践）
+* medium confidence（中等置信度）
+
+这个级别也合理。
+
+## 小建议
+
+这里其实还可以考虑一个细节：
+
+对于：
+
+```dockerfile
+ARG SECRET
+ENV SECRET=value
+```
+
+`E001` 和 `E003` 同时出现是合理的，因为它们不是完全同一事实：
+
+* `E001` 关注的是 **敏感信息固化**
+* `E003` 关注的是 **变量名覆盖与混淆**
+
+所以这组不用强行去重。
+
+---
+
+# 5. 大综合案例 JSON 输出
+
+这个案例我逐条给你判断。
+
+```dockerfile
+ARG NODE_VERSION=20
+FROM node:${NODE_VERSION} AS builder
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm install
+COPY . .
+RUN chmod 777 /tmp/build
+
+FROM node:latest
+WORKDIR /app
+COPY --from=builder /app /app
+COPY id_rsa /root/.ssh/id_rsa
+ENV API_KEY=abc123
+EXPOSE 80
+EXPOSE 80/abc
+USER node
+CMD node server.js
+```
+
+---
+
+## 5.1 `CP005` 过宽复制
+
+```dockerfile
+COPY . .
+```
+
+输出：
+
+> COPY . . 可能复制敏感文件如 .git、.env 等
+
+### 判断
+
+**正确。**
+
+这是典型 info（信息）级提示，低置信度也合理。
+
+---
+
+## 5.2 `X014` 可能需要 `.dockerignore`
+
+输出：
+
+> 检测到过宽复制模式，可能复制了不需要的文件
+
+### 判断
+
+**基本正确。**
+
+但这里有一个问题：
+它和 `CP005` 的语义已经比较接近了。
+
+### 建议
+
+这两个可以共存，但最好区分清楚：
+
+* `CP005`：强调 **过宽复制本身**
+* `X014`：强调 **建议补 `.dockerignore`**
+
+如果两个提示太像，用户会觉得重复。
+
+---
+
+## 5.3 `R008` chmod 777
+
+### 判断
+
+**正确。**
+
+---
+
+## 5.4 `F004` latest 标签
+
+```dockerfile
+FROM node:latest
+```
+
+### 判断
+
+**正确。**
+
+---
+
+## 5.5 `X011` 非 root 用户 COPY 权限风险
+
+输出：
+
+> 非 root 用户 "node" 运行时，COPY 的文件可能权限不足
+
+### 判断
+
+**基本正确，但触发行号不太理想。**
+
+因为你这里真正相关的 COPY 有两个：
+
+```dockerfile
+COPY --from=builder /app /app
+COPY id_rsa /root/.ssh/id_rsa
+```
+
+而输出挂在第 11 行 `COPY --from=builder /app /app` 上，逻辑上还说得过去，因为：
+
+* 最终 `USER node`
+* 没有 `--chown`
+* `/app` 可能权限不匹配
+
+这个规则可以存在。
+
+### 但要注意
+
+这条规则的置信度应该是 **medium**，不要太重。
+因为静态前端其实没法完全确认目录权限，只能启发式判断。
+
+---
+
+## 5.6 `CP004` 敏感文件复制
+
+### 判断
+
+**正确。**
+
+---
+
+## 5.7 `X009` Final stage 敏感文件残留
+
+### 判断
+
+**正确。**
+
+这一条和 `CP004` 同时存在，我认为也合理，因为：
+
+* `CP004`：关注**复制了敏感文件**
+* `X009`：关注**敏感文件进入 final stage（最终阶段）**
+
+这两个事实有层次差异，不算完全重复。
+
+---
+
+## 5.8 `E001` ENV API_KEY
+
+### 判断
+
+**正确。**
+
+---
+
+## 5.9 `EX001` + `EX003` 对 `EXPOSE 80/abc`
+
+输出了两条：
+
+* `EX001`：协议 "abc" 无效
+* `EX003`：协议 "abc" 无效
+
+### 判断
+
+**这里不对，属于重复报错。**
+
+这是当前这批结果里最明显的一个问题。
+
+因为对于：
+
+```dockerfile
+EXPOSE 80/abc
+```
+
+真正的问题只有一个：
+
+* **协议非法**
+
+不应该同时报：
+
+* 端口合法性
+* 协议语法错误
+
+而且两条 message（提示）还几乎一样。
+
+## 建议
+
+这里应该二选一：
+
+### 更推荐的做法
+
+* `EX001` 只负责：
+
+  * 非数字端口
+  * 端口超范围
+* `EX003` 只负责：
+
+  * 协议非法
+
+这样：
+
+```dockerfile
+EXPOSE 80/abc
+```
+
+只报 `EX003`
+
+---
+
+## 5.10 `C003` shell form CMD
+
+```dockerfile
+CMD node server.js
+```
+
+### 判断
+
+**正确。**
+
+shell form（Shell 格式）确实容易有 signal handling（信号处理）问题。
+报 warning 很合理。
+
+---
+
+# 总体结论
+
+这批结果里，我的客观判断是：
+
+## 明确正确的
+
+* `COPY --from=builder` 阶段不存在
+* 缺少 USER 指令
+* ENV 重复定义
+* ENV secrets 检测
+* ARG/ENV 同名覆盖
+* broad copy
+* `.dockerignore` 提醒
+* `chmod 777`
+* `latest`
+* 非 root 用户 COPY 权限风险（可接受）
+* 敏感文件复制
+* final stage 敏感文件残留
+* shell form CMD
+
+## 明显需要改的
+
+### 1. `EXPOSE 80/abc` 重复报错
+
+这是当前最明确的问题。
+**EX001 和 EX003 重复了。**
+
+### 2. `CP005` 和 `X014` 可能有轻微重复
+
+不是绝对错误，但建议再拉开语义差异。
+
+---
+
+# 我给你一个最终判断
+
+如果只看你这次贴出来的结果：
+
+> **整体已经比较靠谱，80% 以上的输出判断是正确的。**
+
+但还没到“很准很干净”的程度。
+当前最值得立刻改的是：
+
+1. **EXPOSE 规则去重**
+2. **broad copy 和 `.dockerignore` 提示边界再拉开一点**
+3. **继续观察 USER + COPY 权限联动是否会过度触发**
+
+---
+
+如果你愿意，我下一条可以直接帮你列一份：
+
+**当前这批规则里，哪些已经可以认为通过，哪些要立刻修，哪些先观察**
+
+我可以给你做成一个三列表。
